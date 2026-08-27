@@ -31,6 +31,7 @@
         <h1 style="font-size: clamp(28px, 4.5vw, 44px);">Future Prediction <span class="accent">(Internal Testing)</span></h1>
         <p class="tagline" id="companyTagline">Loading…</p>
         <p class="lede" id="ledeText"></p>
+        <div class="ticker-switcher" id="tickerSwitcher"></div>
     </div>
 </header>
 
@@ -248,7 +249,22 @@ function resetOverrides() {
   render();
 }
 
+async function renderTickerSwitcher() {
+  try {
+    const res = await fetch('data/covered-tickers.json', { cache: 'no-store' });
+    const covered = (await res.json()).covered || [];
+    const pageFile = location.pathname.split('/').pop();
+    document.getElementById('tickerSwitcher').innerHTML = covered.map(c => `
+      <a href="${pageFile}?ticker=${encodeURIComponent(c.ticker)}" target="_blank" rel="noopener"
+         class="ticker-pill ${c.ticker === ticker ? 'active' : ''}">${c.ticker}</a>
+    `).join('');
+  } catch (e) {
+    // ticker switcher is a nice-to-have -- fail silently if covered-tickers.json isn't reachable
+  }
+}
+
 async function load() {
+  renderTickerSwitcher();
   if (TESTING_ENABLED[ticker] === false) {
     document.getElementById('testingSection').style.display = 'none';
     document.getElementById('disabledSection').style.display = 'block';

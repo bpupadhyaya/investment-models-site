@@ -198,6 +198,18 @@ tbody tr:hover td { background: var(--paper-tint); }
     padding: 18px 22px; margin: 20px 0; color: var(--blue-700); font-size: 15px;
 }
 
+/* Ticker switcher (jump to another covered ticker's same page type) */
+.ticker-switcher {
+    display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 20px;
+}
+.ticker-pill {
+    display: inline-block; padding: 6px 16px; border-radius: 999px; font-weight: 700;
+    font-size: 13px; font-family: ui-monospace, 'SF Mono', monospace;
+    background: #fff; border: 1px solid var(--line); color: var(--green-800);
+}
+.ticker-pill:hover { border-color: var(--green-500); text-decoration: none; }
+.ticker-pill.active { background: var(--green-600); color: #fff; border-color: var(--green-600); }
+
 /* ---------- Explorer (interactive backward model inquiry) ---------- */
 .explorer-controls {
     display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
