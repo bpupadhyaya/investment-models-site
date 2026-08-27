@@ -115,6 +115,8 @@ const FACTOR_LABELS = {
   crypto_correlation_regime: 'Crypto-market correlation regime',
   momentum_trend: 'Momentum / trend',
   drawdown_from_high: 'Drawdown from high',
+  public_interest_momentum: 'Public interest (Google Trends)',
+  financial_performance_trend: 'Revenue growth (SEC financials)',
 };
 
 function clip(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
@@ -159,6 +161,10 @@ function computeFactors() {
     crypto_correlation_regime: (raw.correlation != null) ? scoreCrypto(raw.correlation, btcTrend) : snap.factors.crypto_correlation_regime.score,
     momentum_trend: (raw.smaShort != null) ? scoreMomentum(price, raw.smaShort, raw.smaLong) : snap.factors.momentum_trend.score,
     drawdown_from_high: (raw.trailingHigh != null) ? scoreDrawdown(price, raw.trailingHigh) : snap.factors.drawdown_from_high.score,
+    // Not yet perturbable via a what-if slider -- shown read-only in their own factor cards below,
+    // but still counted in the overall score so it matches the private repo's real output.
+    public_interest_momentum: snap.factors.public_interest_momentum?.score ?? 0,
+    financial_performance_trend: snap.factors.financial_performance_trend?.score ?? 0,
   };
   return { raw, current: { z, btcTrend, price }, scores };
 }
@@ -234,6 +240,14 @@ function render() {
   if (raw.trailingHigh != null) {
     factorCard('drawdown_from_high', `
       <p style="font-size:12.5px;color:var(--ink-faint);">Uses the same what-if price slider above (momentum &amp; drawdown both depend on price).</p>`);
+  }
+  if (snap.factors.public_interest_momentum) {
+    factorCard('public_interest_momentum', `
+      <p style="font-size:12.5px;color:var(--ink-faint);">Real Google Trends search-interest data — not yet simulatable via a what-if slider.</p>`);
+  }
+  if (snap.factors.financial_performance_trend) {
+    factorCard('financial_performance_trend', `
+      <p style="font-size:12.5px;color:var(--ink-faint);">Wired to real SEC financial data; inactive until that data is reachable (see the model's README).</p>`);
   }
 
   cardsEl.querySelectorAll('input[type="range"]').forEach(input => {

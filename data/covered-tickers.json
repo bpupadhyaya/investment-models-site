@@ -3,7 +3,7 @@
   "covered": [
     {
       "ticker": "HOOD",
-      "teaser": "v1 model, 62.6% directional accuracy in backward tests -- explore exactly how it reasons, including where it's still wrong.",
+      "teaser": "v2 model (price action + real Google Trends sentiment), 62.8% directional accuracy in backward tests -- explore exactly how it reasons, including where it's still wrong.",
       "explainability_file": "explainability/HOOD.json"
     }
   ]
