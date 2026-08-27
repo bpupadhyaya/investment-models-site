@@ -1,0 +1,4 @@
+{
+  "_comment": "Hand-maintained. List a ticker here ONLY once its model in pvt/investment-models has actually been built and backward-tested (METHODOLOGY.md Requirement 2) -- not just case-studied/planned. HOOD/MRNA/TSLA/NVDA have founder case studies and methodology but no built model yet, so this starts empty. scripts/sync_company_directory.py reads this and marks matching tickers 'status': 'available' in data/companies.json; everything else shows 'coming_soon'.",
+  "covered": []
+}
