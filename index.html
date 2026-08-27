@@ -162,15 +162,21 @@ async function load() {
     contentEl.innerHTML = `<div class="table-card"><table>
       <thead><tr><th>Ticker</th><th>Company</th><th>Industry (SIC)</th><th>Status</th></tr></thead>
       <tbody>
-        ${rows.map(c => `<tr>
+        ${rows.map(c => {
+          const isAvailable = c.status === 'available';
+          const rowAttrs = isAvailable
+            ? `style="cursor:pointer" onclick="location.href='explorer.html?ticker=${encodeURIComponent(c.ticker)}'"`
+            : '';
+          return `<tr ${rowAttrs}>
           <td class="ticker">${escapeHtml(c.ticker)}</td>
           <td>
             <span class="company-name">${escapeHtml(c.name || '')}</span>
-            ${c.status === 'available' && c.teaser ? `<span class="teaser-line">${escapeHtml(c.teaser)}</span>` : ''}
+            ${isAvailable && c.teaser ? `<span class="teaser-line">${escapeHtml(c.teaser)}</span>` : ''}
           </td>
           <td>${escapeHtml(c.sic_description || c.major_group_title || '—')}</td>
-          <td><span class="badge ${c.status}">${c.status === 'available' ? 'Available' : 'Coming soon'}</span></td>
-        </tr>`).join('')}
+          <td><span class="badge ${c.status}">${isAvailable ? 'Available — explore →' : 'Coming soon'}</span></td>
+        </tr>`;
+        }).join('')}
       </tbody>
     </table></div>
     ${filtered.length > 500 ? `<p class="table-note">Showing first 500 of ${filtered.length.toLocaleString()} matches — refine your search to narrow further.</p>` : ''}`;

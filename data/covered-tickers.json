@@ -1,4 +1,10 @@
 {
-  "_comment": "Hand-maintained. List a ticker here ONLY once its model in pvt/investment-models has actually been built and backward-tested (METHODOLOGY.md Requirement 2) -- not just case-studied/planned. HOOD/MRNA/TSLA/NVDA have founder case studies and methodology but no built model yet, so this starts empty. scripts/sync_company_directory.py reads this and marks matching tickers 'status': 'available' in data/companies.json; everything else shows 'coming_soon'.",
-  "covered": []
+  "_comment": "Hand-maintained. 'available' here means the free Tier 1 backward explorer has real content for this ticker -- a model has actually been built and backward-tested (METHODOLOGY.md Requirement 2), even if the accuracy isn't strong yet. Transparency is the point of the free tier: an honest 62.6%-accuracy model is still worth showing. This is a SEPARATE, lower bar than 'good enough to sell forward predictions for' -- that bar only applies to the paid mobile app (not built yet) and is not what this file controls. Each entry's explainability data lives at data/explainability/<TICKER>.json, exported from the private repo by hand (no backend/cross-repo credential -- see MISSION.md).",
+  "covered": [
+    {
+      "ticker": "HOOD",
+      "teaser": "v1 model, 62.6% directional accuracy in backward tests -- explore exactly how it reasons, including where it's still wrong.",
+      "explainability_file": "explainability/HOOD.json"
+    }
+  ]
 }

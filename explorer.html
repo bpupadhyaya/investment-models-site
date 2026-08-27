@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backward Model Explorer — Investment Models</title>
+    <meta name="description" content="Explore exactly how the Investment Models backward-tested factor model reasons about a real company, on any historical date — including honest accuracy and a 'what-if' simulation mode.">
+    <meta name="theme-color" content="#0b3d2e">
+    <link rel="stylesheet" href="assets/fonts/inter.css">
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<nav>
+    <div class="nav-inner">
+        <a href="./" class="nav-logo">
+            <span class="mark">IM</span>
+            Investment Models
+        </a>
+        <ul class="nav-links">
+            <li><a href="index.html#directory">Companies</a></li>
+            <li><a href="index.html#how-it-works">How it works</a></li>
+            <li><a href="index.html#directory" class="nav-cta">Browse Companies</a></li>
+        </ul>
+        <button class="mobile-menu-btn" onclick="document.querySelector('.nav-links').classList.toggle('show')" aria-label="Menu">&#9776;</button>
+    </div>
+</nav>
+
+<header class="hero" style="padding: 56px 0 40px;">
+    <div class="wrap">
+        <h1 style="font-size: clamp(28px, 4.5vw, 44px);">Backward Model <span class="accent">Explorer</span></h1>
+        <p class="tagline" id="companyTagline">Loading…</p>
+        <p class="lede">Pick any historical date. See exactly which factors the model considered, their
+        weights, and its reasoning — then drag a "what-if" slider to see how the call would have
+        changed. This is real, backward-tested data — never a live or forward prediction (that's a
+        paid mobile-app-only feature; see <a href="index.html#how-it-works">how it works</a>).</p>
+        <div class="stats" id="headlineStats"></div>
+    </div>
+</header>
+
+<section>
+    <div class="wrap">
+        <div class="explorer-controls">
+            <label for="dateSlider">Date</label>
+            <input type="range" id="dateSlider" min="0" max="0" value="0" step="1">
+            <span class="date-readout" id="dateReadout">—</span>
+            <span class="price-readout" id="priceReadout"></span>
+        </div>
+
+        <div class="explorer-grid">
+            <div>
+                <div class="overall-card">
+                    <div class="factor-head">
+                        <span>Overall model call</span>
+                        <button class="btn outline" id="resetBtn" style="padding:6px 14px;font-size:13px;display:none;">Reset to actual</button>
+                    </div>
+                    <div class="direction" id="overallDirection">—</div>
+                    <div class="score-bar-track">
+                        <div class="score-bar-fill" style="width:100%"></div>
+                        <div class="score-marker" id="scoreMarker" style="left:50%"></div>
+                    </div>
+                    <div id="simBadgeWrap"></div>
+                    <p style="margin-top:10px;font-size:13px;color:var(--ink-faint);" id="narrativeText"></p>
+                </div>
+
+                <div id="factorCards"></div>
+            </div>
+
+            <div class="outcome-card">
+                <h3>What actually happened next (real data)</h3>
+                <div class="actual-return" id="actualReturn">—</div>
+                <p style="font-size:13px;color:var(--ink-faint);margin-top:4px;">Price 90 trading days later, vs. price on the selected date</p>
+                <div class="verdict" id="verdict"></div>
+                <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
+                <h3>Model honesty scorecard</h3>
+                <p style="font-size:14px;color:var(--ink-soft);" id="methodologyNote"></p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <div class="footer-inner">
+        <p class="footer-copy">
+            Company data sourced daily from <a href="https://www.sec.gov/edgar" target="_blank" rel="noopener">SEC EDGAR</a> (free, public).<br>
+            Not investment advice — models are for informational/research purposes only.<br>
+            &copy; 2026 EqualInformation, LLC.
+        </p>
+    </div>
+</footer>
+
+<script>
+const params = new URLSearchParams(location.search);
+const ticker = (params.get('ticker') || 'HOOD').toUpperCase();
+
+const FACTOR_LABELS = {
+  relative_valuation_vs_coinbase: 'Relative valuation vs. competitor',
+  crypto_correlation_regime: 'Crypto-market correlation regime',
+  momentum_trend: 'Momentum / trend',
+  drawdown_from_high: 'Drawdown from high',
+};
+
+function clip(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+function scoreValuation(z) { return clip(-z / 2, -1, 1); }
+function scoreCrypto(corr, trend) {
+  const sign = trend >= 0 ? 1 : -1;
+  return clip(corr * sign * Math.min(Math.abs(trend) * 3, 1), -1, 1);
+}
+function scoreMomentum(price, smaShort, smaLong) {
+  const signal = ((price / smaShort - 1) + (price / smaLong - 1)) / 2;
+  return clip(signal * 5, -1, 1);
+}
+function scoreDrawdown(price, trailingHigh) {
+  const drawdown = (price / trailingHigh) - 1;
+  return drawdown < 0 ? clip(-drawdown * 1.2, -1, 1) : 0;
+}
+
+let DATA = null;
+let overrides = {}; // { z, correlation, btcTrend, price } -- only set keys the user has touched
+
+function directionOf(score) {
+  return score > 0.05 ? 'bullish' : score < -0.05 ? 'bearish' : 'neutral';
+}
+
+function computeFactors(snap) {
+  const raw = {
+    z: snap.factors.relative_valuation_vs_coinbase.raw?.z,
+    correlation: snap.factors.crypto_correlation_regime.raw?.correlation,
+    btcTrend: snap.factors.crypto_correlation_regime.raw?.btc_trend,
+    price: snap.price,
+    smaShort: snap.factors.momentum_trend.raw?.sma_short,
+    smaLong: snap.factors.momentum_trend.raw?.sma_long,
+    trailingHigh: snap.factors.drawdown_from_high.raw?.trailing_high,
+  };
+  const z = overrides.z ?? raw.z;
+  const correlation = raw.correlation;
+  const btcTrend = overrides.btcTrend ?? raw.btcTrend;
+  const price = overrides.price ?? raw.price;
+
+  const scores = {
+    relative_valuation_vs_coinbase: (raw.z != null) ? scoreValuation(z) : snap.factors.relative_valuation_vs_coinbase.score,
+    crypto_correlation_regime: (raw.correlation != null) ? scoreCrypto(correlation, btcTrend) : snap.factors.crypto_correlation_regime.score,
+    momentum_trend: (raw.smaShort != null) ? scoreMomentum(price, raw.smaShort, raw.smaLong) : snap.factors.momentum_trend.score,
+    drawdown_from_high: (raw.trailingHigh != null) ? scoreDrawdown(price, raw.trailingHigh) : snap.factors.drawdown_from_high.score,
+  };
+  return { raw, current: { z, correlation, btcTrend, price }, scores };
+}
+
+function fmtPct(x, digits = 1) { return (x >= 0 ? '+' : '') + (x * 100).toFixed(digits) + '%'; }
+
+function render() {
+  const i = parseInt(document.getElementById('dateSlider').value, 10);
+  const snap = DATA.snapshots[i];
+  document.getElementById('dateReadout').textContent = snap.date;
+  document.getElementById('priceReadout').textContent = `Price: $${snap.price.toFixed(2)}`;
+
+  const { raw, current, scores } = computeFactors(snap);
+  const weights = DATA.factor_weights;
+  const overall = Object.keys(scores).reduce((sum, k) => sum + weights[k] * scores[k], 0);
+  const direction = directionOf(overall);
+  const isSimulated = Object.keys(overrides).length > 0;
+
+  const dirEl = document.getElementById('overallDirection');
+  dirEl.textContent = `${direction.charAt(0).toUpperCase() + direction.slice(1)} (${overall >= 0 ? '+' : ''}${overall.toFixed(2)})`;
+  dirEl.className = `direction ${direction}`;
+  document.getElementById('scoreMarker').style.left = `${((overall + 1) / 2) * 100}%`;
+  document.getElementById('resetBtn').style.display = isSimulated ? 'inline-block' : 'none';
+  document.getElementById('simBadgeWrap').innerHTML = isSimulated
+    ? '<span class="simulation-badge">🔧 What-if simulation — not the actual historical call</span>' : '';
+  document.getElementById('narrativeText').textContent = isSimulated
+    ? 'Narrative updates once you reset — factor cards below show the live simulated reasoning.'
+    : snap.narrative;
+
+  const cardsEl = document.getElementById('factorCards');
+  cardsEl.innerHTML = '';
+
+  function factorCard(key, sliderHtml) {
+    const f = snap.factors[key];
+    const score = scores[key];
+    const div = document.createElement('div');
+    const perturbed = isSimulated && score !== f.score;
+    div.className = 'factor-card' + (perturbed ? ' perturbed' : '');
+    div.innerHTML = `
+      <div class="factor-head">
+        <span class="factor-name">${FACTOR_LABELS[key]}</span>
+        <span class="factor-weight">${(weights[key] * 100).toFixed(0)}% weight</span>
+      </div>
+      <div class="factor-score" style="color:${score > 0.05 ? 'var(--green-700)' : score < -0.05 ? 'var(--red-500)' : 'var(--ink-faint)'}">
+        score ${score >= 0 ? '+' : ''}${score.toFixed(2)}
+      </div>
+      <p class="factor-reason">${perturbed ? '(recomputed for the what-if value below)' : f.reason}</p>
+      ${sliderHtml}
+    `;
+    cardsEl.appendChild(div);
+  }
+
+  if (raw.z != null) {
+    factorCard('relative_valuation_vs_coinbase', `
+      <div class="slider-row">
+        <span style="font-size:13px;color:var(--ink-faint);">z-score</span>
+        <input type="range" min="-3" max="3" step="0.1" value="${current.z}" data-key="z">
+        <span class="slider-value">${current.z.toFixed(1)}</span>
+      </div>`);
+  }
+  if (raw.btcTrend != null) {
+    factorCard('crypto_correlation_regime', `
+      <div class="slider-row">
+        <span style="font-size:13px;color:var(--ink-faint);">BTC 30d trend</span>
+        <input type="range" min="-0.5" max="0.5" step="0.01" value="${current.btcTrend}" data-key="btcTrend">
+        <span class="slider-value">${fmtPct(current.btcTrend)}</span>
+      </div>`);
+  }
+  if (raw.smaShort != null) {
+    const priceMin = (raw.price * 0.3).toFixed(2), priceMax = (raw.price * 2).toFixed(2);
+    factorCard('momentum_trend', `
+      <div class="slider-row">
+        <span style="font-size:13px;color:var(--ink-faint);">What-if price</span>
+        <input type="range" min="${priceMin}" max="${priceMax}" step="0.01" value="${current.price}" data-key="price">
+        <span class="slider-value">$${current.price.toFixed(2)}</span>
+      </div>`);
+  }
+  if (raw.trailingHigh != null) {
+    factorCard('drawdown_from_high', `
+      <p style="font-size:12.5px;color:var(--ink-faint);">Uses the same what-if price slider above (momentum &amp; drawdown both depend on price).</p>`);
+  }
+
+  cardsEl.querySelectorAll('input[type="range"]').forEach(input => {
+    input.addEventListener('input', (e) => {
+      overrides[e.target.dataset.key] = parseFloat(e.target.value);
+      render();
+    });
+  });
+
+  // Actual outcome (always reflects real history, regardless of simulation state)
+  const ret = snap.actual_forward_return_90d;
+  const retEl = document.getElementById('actualReturn');
+  if (ret == null) {
+    retEl.textContent = 'Not enough future data yet';
+    retEl.className = 'actual-return';
+  } else {
+    retEl.textContent = fmtPct(ret);
+    retEl.className = 'actual-return ' + (ret > 0 ? 'up' : 'down');
+  }
+  const verdictEl = document.getElementById('verdict');
+  if (ret != null && snap.direction !== 'neutral') {
+    const wasCorrect = (snap.direction === 'bullish') === (ret > 0);
+    verdictEl.textContent = wasCorrect
+      ? `✓ The model's actual ${snap.direction} call was correct`
+      : `✗ The model's actual ${snap.direction} call was wrong`;
+    verdictEl.className = 'verdict ' + (wasCorrect ? 'correct' : 'wrong');
+  } else {
+    verdictEl.textContent = '';
+  }
+}
+
+function resetOverrides() {
+  overrides = {};
+  render();
+}
+
+async function load() {
+  try {
+    const res = await fetch(`data/explainability/${ticker}.json`, { cache: 'no-store' });
+    if (!res.ok) throw new Error('not found');
+    DATA = await res.json();
+  } catch (e) {
+    document.getElementById('companyTagline').textContent = 'No explorable model for this ticker yet.';
+    return;
+  }
+
+  document.getElementById('companyTagline').textContent =
+    `${DATA.company_name} (${DATA.ticker}) — ${DATA.model_version}`;
+  document.getElementById('headlineStats').innerHTML = `
+    <div class="stat"><div class="num">${(DATA.direction_accuracy_non_neutral * 100).toFixed(1)}%</div><div class="label">Directional accuracy</div></div>
+    <div class="stat"><div class="num">${DATA.snapshots.length}</div><div class="label">Dates explorable</div></div>
+    <div class="stat"><div class="num">${DATA.forward_horizon_trading_days}d</div><div class="label">Forward test horizon</div></div>
+  `;
+  document.getElementById('methodologyNote').textContent = DATA.methodology_note;
+
+  const slider = document.getElementById('dateSlider');
+  slider.max = DATA.snapshots.length - 1;
+  slider.value = DATA.snapshots.length - 1;
+  slider.addEventListener('input', () => { overrides = {}; render(); });
+  document.getElementById('resetBtn').addEventListener('click', resetOverrides);
+
+  render();
+}
+load();
+</script>
+</body>
+</html>
