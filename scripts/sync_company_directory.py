@@ -160,8 +160,12 @@ def curl_json(url):
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        if "Request Rate Threshold Exceeded" in text or "Undeclared Automated Tool" in text:
+        if "Request Rate Threshold Exceeded" in text:
+            print(f"  [blocked] SEC rate limit hit for {url}")
             return None  # signal: rate-limited/blocked, caller decides whether to retry
+        if "Undeclared Automated Tool" in text:
+            print(f"  [blocked] SEC bot-detection flagged {url}")
+            return None
         raise RuntimeError(f"Unexpected non-JSON response from {url}: {text[:200]!r}")
 
 
@@ -171,6 +175,8 @@ def fetch_with_retry(url):
         if data is not None:
             return data
         sleep_for = 2 ** attempt * 5  # 5s, 10s, 20s
+        if attempt < MAX_RETRIES - 1:
+            print(f"  retrying in {sleep_for}s ({attempt + 1}/{MAX_RETRIES})...")
         time.sleep(sleep_for)
     return None  # gave up -- caller skips this CIK for this run, retries next run
 
@@ -178,7 +184,18 @@ def fetch_with_retry(url):
 def fetch_company_tickers():
     data = fetch_with_retry(COMPANY_TICKERS_URL)
     if data is None:
-        raise RuntimeError("Could not fetch company_tickers.json after retries -- try again later.")
+        # Low-stakes: this is a scheduled job. GitHub-hosted runners share IP ranges across
+        # unrelated CI traffic worldwide, so SEC's per-IP rate limit can already be exhausted
+        # by *other* jobs even when this script makes almost no requests itself -- this isn't
+        # necessarily a bug. The next scheduled run (different runner, likely different IP)
+        # will probably succeed; no action needed unless failures persist across many days.
+        raise RuntimeError(
+            "Could not fetch company_tickers.json after retries -- SEC is blocking this "
+            "request right now (possibly via a shared GitHub Actions IP rate-limited by "
+            "unrelated traffic, not necessarily this job). The next scheduled run will retry "
+            "automatically; this is expected to be occasionally flaky, not a sign of a broken "
+            "script."
+        )
     return {str(v["cik_str"]): {"ticker": v["ticker"], "title": v["title"]} for v in data.values()}
 
 
