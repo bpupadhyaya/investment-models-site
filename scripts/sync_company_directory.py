@@ -31,13 +31,21 @@ teaser/paywall UI reads that field directly rather than joining two files client
 covered-tickers.json by hand whenever a new company model ships; this script does NOT talk to
 the private repo at all.
 
-Usage: python3 scripts/sync_company_directory.py
+Usage: python3 scripts/sync_company_directory.py [--full]
+  --full  Ignore MAX_NEW_LOOKUPS_PER_RUN and resolve every unresolved CIK in one run. The cap
+          exists to avoid monopolizing a *shared* CI runner's SEC rate-limit budget across
+          unrelated scheduled jobs -- it doesn't apply when running by hand from a real,
+          unshared network connection (e.g. a one-time manual bootstrap from home when SEC is
+          blocking every cloud/CI IP this project has access to). Still paced at
+          REQUEST_DELAY_SECONDS between requests, safely under SEC's own fair-access limit --
+          this just means "don't stop after 1500", not "go faster."
 Reads:  data/covered-tickers.json (hand-maintained)
 Writes: data/companies.json
 """
 import json
 import re
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -231,14 +239,18 @@ def load_covered_tickers():
     return {c["ticker"]: c for c in data.get("covered", [])}
 
 
-def sync():
+def sync(full=False):
     current_tickers = fetch_company_tickers()
     existing = load_existing_directory()
     covered = load_covered_tickers()
 
     new_ciks = [cik for cik in current_tickers if cik not in existing]
-    to_fetch = new_ciks[:MAX_NEW_LOOKUPS_PER_RUN]
+    cap = len(new_ciks) if full else MAX_NEW_LOOKUPS_PER_RUN
+    to_fetch = new_ciks[:cap]
     remaining_after = len(new_ciks) - len(to_fetch)
+    if full and new_ciks:
+        eta_minutes = len(new_ciks) * REQUEST_DELAY_SECONDS / 60
+        print(f"--full: resolving all {len(new_ciks)} unresolved CIKs this run (~{eta_minutes:.0f} min at this pace).")
 
     fetched = 0
     skipped = []
@@ -311,4 +323,4 @@ def sync():
 
 
 if __name__ == "__main__":
-    sync()
+    sync(full="--full" in sys.argv)
