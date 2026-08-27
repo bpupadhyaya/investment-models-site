@@ -89,8 +89,8 @@ async function load() {
         <div class="teaser">${c.teaser || ''}</div>
       </div>
       <div class="links">
-        <a class="btn" href="explorer.html?ticker=${encodeURIComponent(c.ticker)}">Historical explorer</a>
-        <a class="btn outline" href="forward.html?ticker=${encodeURIComponent(c.ticker)}">Future prediction (testing)</a>
+        <a class="btn" href="explorer.html?ticker=${encodeURIComponent(c.ticker)}" target="_blank" rel="noopener">Historical explorer</a>
+        <a class="btn outline" href="forward.html?ticker=${encodeURIComponent(c.ticker)}" target="_blank" rel="noopener">Future prediction (testing)</a>
       </div>
     </div>
   `).join('');

@@ -18,10 +18,10 @@
             Investment Models
         </a>
         <ul class="nav-links">
-            <li><a href="models.html">Models</a></li>
+            <li><a href="models.html" target="_blank" rel="noopener">Models</a></li>
             <li><a href="#directory">Companies</a></li>
             <li><a href="#how-it-works">How it works</a></li>
-            <li><a href="models.html" class="nav-cta">Explore a Model</a></li>
+            <li><a href="models.html" class="nav-cta" target="_blank" rel="noopener">Explore a Model</a></li>
         </ul>
         <button class="mobile-menu-btn" onclick="document.querySelector('.nav-links').classList.toggle('show')" aria-label="Menu">&#9776;</button>
     </div>
@@ -36,7 +36,7 @@
         SEC-registered companies below; models marked <strong>Available</strong> have actually
         been built and backward-tested against real price history.</p>
         <p style="margin-top:18px;">
-          <a href="models.html" class="btn">Explore a live model &rarr;</a>
+          <a href="models.html" class="btn" target="_blank" rel="noopener">Explore a live model &rarr;</a>
         </p>
         <div class="stats" id="stats"></div>
     </div>
@@ -169,7 +169,7 @@ async function load() {
         ${rows.map(c => {
           const isAvailable = c.status === 'available';
           const rowAttrs = isAvailable
-            ? `style="cursor:pointer" onclick="location.href='explorer.html?ticker=${encodeURIComponent(c.ticker)}'"`
+            ? `style="cursor:pointer" onclick="window.open('explorer.html?ticker=${encodeURIComponent(c.ticker)}', '_blank', 'noopener')"`
             : '';
           return `<tr ${rowAttrs}>
           <td class="ticker">${escapeHtml(c.ticker)}</td>
