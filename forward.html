@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Future Prediction (Internal Testing) — Investment Models</title>
+    <meta name="description" content="Internal desktop testing of the forward/current model prediction, ahead of launch in the paid mobile app.">
+    <meta name="theme-color" content="#0b3d2e">
+    <link rel="stylesheet" href="assets/fonts/inter.css">
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<nav>
+    <div class="nav-inner">
+        <a href="./" class="nav-logo">
+            <span class="mark">IM</span>
+            Investment Models
+        </a>
+        <ul class="nav-links">
+            <li><a href="models.html">Models</a></li>
+            <li><a href="index.html#directory">Companies</a></li>
+            <li><a href="index.html#directory" class="nav-cta">Browse Companies</a></li>
+        </ul>
+        <button class="mobile-menu-btn" onclick="document.querySelector('.nav-links').classList.toggle('show')" aria-label="Menu">&#9776;</button>
+    </div>
+</nav>
+
+<header class="hero" style="padding: 56px 0 40px;">
+    <div class="wrap">
+        <h1 style="font-size: clamp(28px, 4.5vw, 44px);">Future Prediction <span class="accent">(Internal Testing)</span></h1>
+        <p class="tagline" id="companyTagline">Loading…</p>
+        <p class="lede" id="ledeText"></p>
+    </div>
+</header>
+
+<section id="testingSection">
+    <div class="wrap">
+        <div class="notice" style="margin-bottom:24px;">
+            <strong>Desktop testing only.</strong> This page shows the model's current/forward call
+            using a JS port of the same scoring logic as the private repo's model, for validating the
+            forward experience before it ships. Once validated, this URL will be disabled here and
+            replaced with a link to the paid iOS/Android app — forward prediction is intended to be an
+            in-app-only feature (see the public site's "how it works" section for why).
+        </div>
+
+        <div class="explorer-grid">
+            <div>
+                <div class="overall-card">
+                    <div class="factor-head">
+                        <span>Current model call <span id="asOfText" style="font-weight:400;color:var(--ink-faint);font-size:13px;"></span></span>
+                        <button class="btn outline" id="resetBtn" style="padding:6px 14px;font-size:13px;display:none;">Reset to actual</button>
+                    </div>
+                    <div class="direction" id="overallDirection">—</div>
+                    <div class="score-bar-track">
+                        <div class="score-bar-fill" style="width:100%"></div>
+                        <div class="score-marker" id="scoreMarker" style="left:50%"></div>
+                    </div>
+                    <div id="simBadgeWrap"></div>
+                    <p style="margin-top:10px;font-size:13px;color:var(--ink-faint);" id="narrativeText"></p>
+                </div>
+
+                <div id="factorCards"></div>
+            </div>
+
+            <div class="outcome-card">
+                <h3>This is a live/current call, not a backtest</h3>
+                <p style="font-size:14px;color:var(--ink-soft);">
+                    There's no "what actually happened" to compare against yet — that's the point of a
+                    forward prediction. Use the what-if sliders to stress-test how the call would shift
+                    under different conditions.
+                </p>
+                <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
+                <h3>Model status</h3>
+                <p style="font-size:14px;color:var(--ink-soft);" id="methodologyNote"></p>
+                <p style="font-size:13px;color:var(--red-500);margin-top:10px;font-weight:600;" id="notTrustedNote"></p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="disabledSection" style="display:none;">
+    <div class="wrap" style="text-align:center;">
+        <div class="empty-state">
+            <p><strong>This testing page has been retired.</strong></p>
+            <p>Forward predictions are now available in the Investment Models app for iOS and Android.</p>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <div class="footer-inner">
+        <p class="footer-copy">
+            Company data sourced daily from <a href="https://www.sec.gov/edgar" target="_blank" rel="noopener">SEC EDGAR</a> (free, public).<br>
+            Not investment advice — models are for informational/research purposes only.<br>
+            &copy; 2026 EqualInformation, LLC.
+        </p>
+    </div>
+</footer>
+
+<script>
+// Flip to false once this ticker's forward experience is validated and the mobile app is ready
+// to take over -- swaps the interactive tool for a "moved to the app" message. Per-ticker so one
+// company can be retired from web-testing while another is still being validated.
+const TESTING_ENABLED = {
+  HOOD: true,
+};
+
+const params = new URLSearchParams(location.search);
+const ticker = (params.get('ticker') || 'HOOD').toUpperCase();
+
+const FACTOR_LABELS = {
+  relative_valuation_vs_coinbase: 'Relative valuation vs. competitor',
+  crypto_correlation_regime: 'Crypto-market correlation regime',
+  momentum_trend: 'Momentum / trend',
+  drawdown_from_high: 'Drawdown from high',
+};
+
+function clip(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+function scoreValuation(z) { return clip(-z / 2, -1, 1); }
+function scoreCrypto(corr, trend) {
+  const sign = trend >= 0 ? 1 : -1;
+  return clip(corr * sign * Math.min(Math.abs(trend) * 3, 1), -1, 1);
+}
+function scoreMomentum(price, smaShort, smaLong) {
+  const signal = ((price / smaShort - 1) + (price / smaLong - 1)) / 2;
+  return clip(signal * 5, -1, 1);
+}
+function scoreDrawdown(price, trailingHigh) {
+  const drawdown = (price / trailingHigh) - 1;
+  return drawdown < 0 ? clip(-drawdown * 1.2, -1, 1) : 0;
+}
+
+let DATA = null;
+let snap = null;
+let overrides = {};
+
+function directionOf(score) {
+  return score > 0.05 ? 'bullish' : score < -0.05 ? 'bearish' : 'neutral';
+}
+
+function computeFactors() {
+  const raw = {
+    z: snap.factors.relative_valuation_vs_coinbase.raw?.z,
+    correlation: snap.factors.crypto_correlation_regime.raw?.correlation,
+    btcTrend: snap.factors.crypto_correlation_regime.raw?.btc_trend,
+    price: snap.price,
+    smaShort: snap.factors.momentum_trend.raw?.sma_short,
+    smaLong: snap.factors.momentum_trend.raw?.sma_long,
+    trailingHigh: snap.factors.drawdown_from_high.raw?.trailing_high,
+  };
+  const z = overrides.z ?? raw.z;
+  const btcTrend = overrides.btcTrend ?? raw.btcTrend;
+  const price = overrides.price ?? raw.price;
+
+  const scores = {
+    relative_valuation_vs_coinbase: (raw.z != null) ? scoreValuation(z) : snap.factors.relative_valuation_vs_coinbase.score,
+    crypto_correlation_regime: (raw.correlation != null) ? scoreCrypto(raw.correlation, btcTrend) : snap.factors.crypto_correlation_regime.score,
+    momentum_trend: (raw.smaShort != null) ? scoreMomentum(price, raw.smaShort, raw.smaLong) : snap.factors.momentum_trend.score,
+    drawdown_from_high: (raw.trailingHigh != null) ? scoreDrawdown(price, raw.trailingHigh) : snap.factors.drawdown_from_high.score,
+  };
+  return { raw, current: { z, btcTrend, price }, scores };
+}
+
+function fmtPct(x, digits = 1) { return (x >= 0 ? '+' : '') + (x * 100).toFixed(digits) + '%'; }
+
+function render() {
+  const { raw, current, scores } = computeFactors();
+  const weights = DATA.factor_weights;
+  const overall = Object.keys(scores).reduce((sum, k) => sum + weights[k] * scores[k], 0);
+  const direction = directionOf(overall);
+  const isSimulated = Object.keys(overrides).length > 0;
+
+  const dirEl = document.getElementById('overallDirection');
+  dirEl.textContent = `${direction.charAt(0).toUpperCase() + direction.slice(1)} (${overall >= 0 ? '+' : ''}${overall.toFixed(2)})`;
+  dirEl.className = `direction ${direction}`;
+  document.getElementById('scoreMarker').style.left = `${((overall + 1) / 2) * 100}%`;
+  document.getElementById('resetBtn').style.display = isSimulated ? 'inline-block' : 'none';
+  document.getElementById('simBadgeWrap').innerHTML = isSimulated
+    ? '<span class="simulation-badge">🔧 What-if simulation — not the model\'s actual current call</span>' : '';
+  document.getElementById('narrativeText').textContent = isSimulated
+    ? 'Reset to see the actual current narrative — factor cards below show the live simulated reasoning.'
+    : snap.narrative;
+
+  const cardsEl = document.getElementById('factorCards');
+  cardsEl.innerHTML = '';
+
+  function factorCard(key, sliderHtml) {
+    const f = snap.factors[key];
+    const score = scores[key];
+    const div = document.createElement('div');
+    const perturbed = isSimulated && score !== f.score;
+    div.className = 'factor-card' + (perturbed ? ' perturbed' : '');
+    div.innerHTML = `
+      <div class="factor-head">
+        <span class="factor-name">${FACTOR_LABELS[key]}</span>
+        <span class="factor-weight">${(weights[key] * 100).toFixed(0)}% weight</span>
+      </div>
+      <div class="factor-score" style="color:${score > 0.05 ? 'var(--green-700)' : score < -0.05 ? 'var(--red-500)' : 'var(--ink-faint)'}">
+        score ${score >= 0 ? '+' : ''}${score.toFixed(2)}
+      </div>
+      <p class="factor-reason">${perturbed ? '(recomputed for the what-if value below)' : f.reason}</p>
+      ${sliderHtml}
+    `;
+    cardsEl.appendChild(div);
+  }
+
+  if (raw.z != null) {
+    factorCard('relative_valuation_vs_coinbase', `
+      <div class="slider-row">
+        <span style="font-size:13px;color:var(--ink-faint);">z-score</span>
+        <input type="range" min="-3" max="3" step="0.1" value="${current.z}" data-key="z">
+        <span class="slider-value">${current.z.toFixed(1)}</span>
+      </div>`);
+  }
+  if (raw.btcTrend != null) {
+    factorCard('crypto_correlation_regime', `
+      <div class="slider-row">
+        <span style="font-size:13px;color:var(--ink-faint);">BTC 30d trend</span>
+        <input type="range" min="-0.5" max="0.5" step="0.01" value="${current.btcTrend}" data-key="btcTrend">
+        <span class="slider-value">${fmtPct(current.btcTrend)}</span>
+      </div>`);
+  }
+  if (raw.smaShort != null) {
+    const priceMin = (raw.price * 0.3).toFixed(2), priceMax = (raw.price * 2).toFixed(2);
+    factorCard('momentum_trend', `
+      <div class="slider-row">
+        <span style="font-size:13px;color:var(--ink-faint);">What-if price</span>
+        <input type="range" min="${priceMin}" max="${priceMax}" step="0.01" value="${current.price}" data-key="price">
+        <span class="slider-value">$${current.price.toFixed(2)}</span>
+      </div>`);
+  }
+  if (raw.trailingHigh != null) {
+    factorCard('drawdown_from_high', `
+      <p style="font-size:12.5px;color:var(--ink-faint);">Uses the same what-if price slider above (momentum &amp; drawdown both depend on price).</p>`);
+  }
+
+  cardsEl.querySelectorAll('input[type="range"]').forEach(input => {
+    input.addEventListener('input', (e) => {
+      overrides[e.target.dataset.key] = parseFloat(e.target.value);
+      render();
+    });
+  });
+}
+
+function resetOverrides() {
+  overrides = {};
+  render();
+}
+
+async function load() {
+  if (TESTING_ENABLED[ticker] === false) {
+    document.getElementById('testingSection').style.display = 'none';
+    document.getElementById('disabledSection').style.display = 'block';
+    document.getElementById('companyTagline').textContent = ticker;
+    document.getElementById('ledeText').textContent = '';
+    return;
+  }
+
+  try {
+    const res = await fetch(`data/explainability/${ticker}.json`, { cache: 'no-store' });
+    if (!res.ok) throw new Error('not found');
+    DATA = await res.json();
+  } catch (e) {
+    document.getElementById('companyTagline').textContent = 'No model available for this ticker yet.';
+    document.getElementById('testingSection').style.display = 'none';
+    return;
+  }
+
+  snap = DATA.snapshots[DATA.snapshots.length - 1];
+  document.getElementById('companyTagline').textContent = `${DATA.company_name} (${DATA.ticker}) — ${DATA.model_version}`;
+  document.getElementById('ledeText').textContent =
+    `Uses the most recent data this model has (as of its last data sync) to compute a current call, ` +
+    `plus the same what-if simulation as the historical explorer.`;
+  document.getElementById('asOfText').textContent = `— as of ${snap.date}, price $${snap.price.toFixed(2)}`;
+  document.getElementById('methodologyNote').textContent = DATA.methodology_note;
+  document.getElementById('notTrustedNote').textContent =
+    'This model has not yet cleared its own backward-validation bar for forward trust (see methodology note above) -- treat this page as a functional preview, not a signal to act on.';
+
+  document.getElementById('resetBtn').addEventListener('click', resetOverrides);
+  render();
+}
+load();
+</script>
+</body>
+</html>

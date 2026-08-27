@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Models — Investment Models</title>
+    <meta name="description" content="Every company model available to explore — historical backward-tested explorer and (desktop-testing) future prediction pages.">
+    <meta name="theme-color" content="#0b3d2e">
+    <link rel="stylesheet" href="assets/fonts/inter.css">
+    <link rel="stylesheet" href="assets/css/style.css">
+    <style>
+        .model-card {
+            background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
+            box-shadow: var(--shadow); padding: 24px; margin-bottom: 18px;
+            display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;
+        }
+        .model-card .ticker-name { font-size: 18px; font-weight: 800; color: var(--green-900); }
+        .model-card .teaser { color: var(--ink-soft); font-size: 14px; margin-top: 4px; max-width: 480px; }
+        .model-card .links { display: flex; gap: 10px; flex-wrap: wrap; }
+    </style>
+</head>
+<body>
+
+<nav>
+    <div class="nav-inner">
+        <a href="./" class="nav-logo">
+            <span class="mark">IM</span>
+            Investment Models
+        </a>
+        <ul class="nav-links">
+            <li><a href="models.html">Models</a></li>
+            <li><a href="index.html#directory">Companies</a></li>
+            <li><a href="index.html#directory" class="nav-cta">Browse Companies</a></li>
+        </ul>
+        <button class="mobile-menu-btn" onclick="document.querySelector('.nav-links').classList.toggle('show')" aria-label="Menu">&#9776;</button>
+    </div>
+</nav>
+
+<header class="hero" style="padding: 56px 0 40px;">
+    <div class="wrap">
+        <h1 style="font-size: clamp(28px, 4.5vw, 44px);">Every Model, <span class="accent">In One Place</span></h1>
+        <p class="lede">Each company gets two pages once its model is built: a free, permanent
+        <strong>historical explorer</strong> (backward-tested, honest accuracy included), and a
+        <strong>future-prediction testing page</strong> used on desktop during development — once
+        validated, that link is retired here in favor of the paid iOS/Android app.</p>
+    </div>
+</header>
+
+<section>
+    <div class="wrap">
+        <div id="modelsList"></div>
+    </div>
+</section>
+
+<footer>
+    <div class="footer-inner">
+        <p class="footer-copy">
+            Company data sourced daily from <a href="https://www.sec.gov/edgar" target="_blank" rel="noopener">SEC EDGAR</a> (free, public).<br>
+            Not investment advice — models are for informational/research purposes only.<br>
+            &copy; 2026 EqualInformation, LLC.
+        </p>
+    </div>
+</footer>
+
+<script>
+async function load() {
+  const listEl = document.getElementById('modelsList');
+  let covered;
+  try {
+    const res = await fetch('data/covered-tickers.json', { cache: 'no-store' });
+    covered = (await res.json()).covered || [];
+  } catch (e) {
+    listEl.innerHTML = '<div class="empty-state">Could not load the model list.</div>';
+    return;
+  }
+
+  if (!covered.length) {
+    listEl.innerHTML = `<div class="empty-state">
+      <p><strong>No models published yet.</strong></p>
+      <p>Check back once the first company model is built and backward-tested.</p>
+    </div>`;
+    return;
+  }
+
+  listEl.innerHTML = covered.map(c => `
+    <div class="model-card">
+      <div>
+        <div class="ticker-name">${c.ticker}</div>
+        <div class="teaser">${c.teaser || ''}</div>
+      </div>
+      <div class="links">
+        <a class="btn" href="explorer.html?ticker=${encodeURIComponent(c.ticker)}">Historical explorer</a>
+        <a class="btn outline" href="forward.html?ticker=${encodeURIComponent(c.ticker)}">Future prediction (testing)</a>
+      </div>
+    </div>
+  `).join('');
+}
+load();
+</script>
+</body>
+</html>
