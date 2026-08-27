@@ -164,25 +164,34 @@ async function load() {
     }
 
     contentEl.innerHTML = `<div class="table-card"><table>
-      <thead><tr><th>Ticker</th><th>Company</th><th>Industry (SIC)</th><th>Status</th></tr></thead>
+      <thead><tr>
+        <th>Ticker</th><th>Company</th><th>CIK</th><th>Sector</th><th>SIC code</th>
+        <th>Exchange</th><th>Earliest SEC filing on record</th><th>Status</th>
+      </tr></thead>
       <tbody>
         ${rows.map(c => {
           const isAvailable = c.status === 'available';
           const rowAttrs = isAvailable
             ? `style="cursor:pointer" onclick="window.open('explorer.html?ticker=${encodeURIComponent(c.ticker)}', '_blank', 'noopener')"`
             : '';
+          const exchanges = Array.isArray(c.exchanges) && c.exchanges.length ? c.exchanges.join(', ') : '—';
           return `<tr ${rowAttrs}>
           <td class="ticker">${escapeHtml(c.ticker)}</td>
           <td>
             <span class="company-name">${escapeHtml(c.name || '')}</span>
             ${isAvailable && c.teaser ? `<span class="teaser-line">${escapeHtml(c.teaser)}</span>` : ''}
           </td>
-          <td>${escapeHtml(c.sic_description || c.major_group_title || '—')}</td>
+          <td>${escapeHtml(c.cik || '—')}</td>
+          <td>${escapeHtml(c.major_group_title || '—')}</td>
+          <td>${escapeHtml(c.sic_description ? `${c.sic} — ${c.sic_description}` : (c.sic || '—'))}</td>
+          <td>${escapeHtml(exchanges)}</td>
+          <td>${escapeHtml(c.earliest_recent_filing_date || '—')}</td>
           <td><span class="badge ${c.status}">${isAvailable ? 'Available — explore →' : 'Coming soon'}</span></td>
         </tr>`;
         }).join('')}
       </tbody>
     </table></div>
+    <p class="table-note">"Earliest SEC filing on record" is the oldest filing date visible in SEC's per-company "recent filings" data — a close proxy for registration date, not SEC's literal registration date (and can read later than a company's true first filing if it has a very long filing history). CIK/sector/SIC/filing-date columns populate as SEC's per-company data resolves — new tickers show "—" until their SIC-code lookup completes (see the "still resolving" note above).</p>
     ${filtered.length > 500 ? `<p class="table-note">Showing first 500 of ${filtered.length.toLocaleString()} matches — refine your search to narrow further.</p>` : ''}`;
   }
 

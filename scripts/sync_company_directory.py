@@ -56,7 +56,15 @@ USER_AGENT = "investment-models-site-sync/1.0 (github.com/bpupadhyaya/investment
 # from the same runner pool, not just this job.
 MAX_NEW_LOOKUPS_PER_RUN = 1500
 REQUEST_DELAY_SECONDS = 0.15  # ~6.6 req/sec, under SEC's ~10 req/sec fair-access ceiling
+
+# SEC's rate-limit/block windows have been observed to last hours during this project's
+# development (not the ~10-minute window SEC's own docs describe), so retries need real backoff
+# to have any chance of landing after the window clears, not just to smooth over jitter. This
+# still fits well inside a scheduled job's time budget (~5 min worst case for the one bulk
+# company_tickers.json call, which is retried harder since the whole run depends on it).
 MAX_RETRIES = 3
+BULK_FETCH_MAX_RETRIES = 5
+BULK_FETCH_BACKOFF_SECONDS = [10, 20, 40, 80, 160]
 
 # Fallback titles for SIC major groups with no round-number ("XX00") code in SEC's active
 # code list. Source: OSHA SIC Manual, https://www.osha.gov/data/sic-manual (authoritative,
@@ -169,20 +177,22 @@ def curl_json(url):
         raise RuntimeError(f"Unexpected non-JSON response from {url}: {text[:200]!r}")
 
 
-def fetch_with_retry(url):
-    for attempt in range(MAX_RETRIES):
+def fetch_with_retry(url, max_retries=MAX_RETRIES, backoff=None):
+    for attempt in range(max_retries):
         data = curl_json(url)
         if data is not None:
             return data
-        sleep_for = 2 ** attempt * 5  # 5s, 10s, 20s
-        if attempt < MAX_RETRIES - 1:
-            print(f"  retrying in {sleep_for}s ({attempt + 1}/{MAX_RETRIES})...")
+        sleep_for = backoff[attempt] if backoff else 2 ** attempt * 5  # 5s, 10s, 20s
+        if attempt < max_retries - 1:
+            print(f"  retrying in {sleep_for}s ({attempt + 1}/{max_retries})...")
         time.sleep(sleep_for)
     return None  # gave up -- caller skips this CIK for this run, retries next run
 
 
 def fetch_company_tickers():
-    data = fetch_with_retry(COMPANY_TICKERS_URL)
+    data = fetch_with_retry(
+        COMPANY_TICKERS_URL, max_retries=BULK_FETCH_MAX_RETRIES, backoff=BULK_FETCH_BACKOFF_SECONDS
+    )
     if data is None:
         # Low-stakes: this is a scheduled job. GitHub-hosted runners share IP ranges across
         # unrelated CI traffic worldwide, so SEC's per-IP rate limit can already be exhausted
@@ -241,6 +251,8 @@ def sync():
             continue
         sic = data.get("sic") or None
         major_group_code, major_group_title = major_group_for_sic(sic)
+        filing_dates = data.get("filings", {}).get("recent", {}).get("filingDate", [])
+        exchanges = data.get("exchanges") or []
         existing[cik] = {
             "cik": cik,
             "ticker": current_tickers[cik]["ticker"],
@@ -249,6 +261,14 @@ def sync():
             "sic_description": data.get("sicDescription") or None,
             "major_group_code": major_group_code,
             "major_group_title": major_group_title,
+            "exchanges": exchanges,
+            # NOT the literal SEC registration date (that needs the actual registration
+            # statement) -- this is the earliest filing date visible in SEC's "recent filings"
+            # window for this CIK, a close, honestly-labeled proxy. For companies with very long
+            # filing histories, SEC paginates older filings out of "recent" into separate
+            # per-year files this script doesn't fetch (out of scope for now), so this can read
+            # later than the company's true first filing in those cases.
+            "earliest_recent_filing_date": min(filing_dates) if filing_dates else None,
             "active": True,
         }
         fetched += 1
@@ -266,6 +286,12 @@ def sync():
         "source": {
             "tickers": COMPANY_TICKERS_URL,
             "sic_lookup": SUBMISSIONS_URL_TMPL,
+            "earliest_recent_filing_date_note": (
+                "Earliest filing date in SEC's 'recent filings' window for this CIK -- a proxy "
+                "for registration date, not the literal SEC registration date itself. Can read "
+                "later than a company's true first filing if it has a very long filing history "
+                "(SEC paginates older filings out of the 'recent' window)."
+            ),
         },
         "total_current_tickers": len(current_tickers),
         "total_resolved": len(existing),

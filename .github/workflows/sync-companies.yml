@@ -1,12 +1,18 @@
 name: Sync company directory
 
-# Companies register/delist with SEC essentially every business day, so this runs daily --
-# fast/cheap enough for a marketing site (no one needs intraday freshness on whether this
-# morning's IPO is listed yet), but far more responsive than a weekly or monthly cadence would
-# be. See scripts/sync_company_directory.py's docstring for the full reasoning.
+# Companies register/delist with SEC essentially every business day.
+#
+# Runs every 4 hours, not daily, DURING THE BOOTSTRAP PHASE: SEC has been blocking/rate-limiting
+# even the single bulk company_tickers.json call for extended windows (hours, confirmed from
+# both a dev sandbox and a GitHub Actions runner, 2026-08-27), so the very first step of every
+# run so far has failed and this site's directory has never actually populated ("Directory is
+# populating" showing indefinitely). Every-4-hours gives 6x the chances per day of landing in a
+# window where SEC isn't currently blocking this runner's IP. Once the ~8,000-company backlog is
+# fully resolved, drop this back to once daily. See scripts/sync_company_directory.py's docstring
+# for the full reasoning on why this is otherwise a slow-changing dataset.
 on:
   schedule:
-    - cron: "0 8 * * *" # daily, 08:00 UTC (an hour after the private repo's own sync)
+    - cron: "42 */4 * * *" # every 4 hours, offset off the top of the hour and staggered from the private repo's own sync
   workflow_dispatch: {} # manual "Run workflow" button
 
 permissions:
