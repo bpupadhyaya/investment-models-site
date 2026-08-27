@@ -86,9 +86,6 @@
 
 <footer>
     <div class="footer-inner">
-        <ul class="footer-links">
-            <li><a href="https://github.com/bpupadhyaya/investment-models-site">GitHub</a></li>
-        </ul>
         <p class="footer-copy">
             Company data sourced daily from <a href="https://www.sec.gov/edgar" target="_blank" rel="noopener">SEC EDGAR</a> (free, public).<br>
             Not investment advice — models are for informational/research purposes only.<br>
@@ -116,10 +113,36 @@ async function load() {
   }
 
   const companies = (data.companies || []).filter(c => c.active !== false);
+
+  if (!companies.length) {
+    statsEl.innerHTML = '';
+    contentEl.innerHTML = `<div class="empty-state">
+      <p><strong>Directory is populating.</strong></p>
+      <p>The first sync is still resolving companies — check back soon.</p>
+    </div>`;
+    return;
+  }
+
   statsEl.innerHTML = `
     <div class="stat"><div class="num">${companies.length.toLocaleString()}</div><div class="label">Companies tracked</div></div>
     <div class="stat"><div class="num">${data.available_count ?? 0}</div><div class="label">Models available</div></div>
   `;
+
+  const pending = data.still_unresolved || 0;
+  if (pending > 0) {
+    const total = data.total_current_tickers ? data.total_current_tickers.toLocaleString() : '';
+    const note = document.createElement('p');
+    note.className = 'table-note';
+    note.style.marginBottom = '16px';
+    note.textContent = `${companies.length.toLocaleString()} of ${total} SEC-registered companies resolved so far — the rest arrive as the daily sync catches up.`;
+    contentEl.before(note);
+  }
+
+  function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, m => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[m]));
+  }
 
   function render() {
     const q = document.getElementById('search').value.trim().toLowerCase();
@@ -137,12 +160,15 @@ async function load() {
     }
 
     contentEl.innerHTML = `<div class="table-card"><table>
-      <thead><tr><th>Ticker</th><th>Company</th><th>Sector (SIC)</th><th>Status</th></tr></thead>
+      <thead><tr><th>Ticker</th><th>Company</th><th>Industry (SIC)</th><th>Status</th></tr></thead>
       <tbody>
         ${rows.map(c => `<tr>
-          <td class="ticker">${c.ticker}</td>
-          <td>${c.name || ''}</td>
-          <td>${c.major_group_title || '—'}</td>
+          <td class="ticker">${escapeHtml(c.ticker)}</td>
+          <td>
+            <span class="company-name">${escapeHtml(c.name || '')}</span>
+            ${c.status === 'available' && c.teaser ? `<span class="teaser-line">${escapeHtml(c.teaser)}</span>` : ''}
+          </td>
+          <td>${escapeHtml(c.sic_description || c.major_group_title || '—')}</td>
           <td><span class="badge ${c.status}">${c.status === 'available' ? 'Available' : 'Coming soon'}</span></td>
         </tr>`).join('')}
       </tbody>
